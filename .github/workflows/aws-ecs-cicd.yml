@@ -32,7 +32,6 @@ on:
 
 env:
   AWS_REGION: eu-west-1                   # set this to your preferred AWS region, e.g. us-west-1
-  ECR_REPOSITORY: 303981612052.dkr.ecr.eu-west-1.amazonaws.com/waycab/hellopy           # set this to your Amazon ECR repository name
   ECS_SERVICE: waycab-fargate-service                 # set this to your Amazon ECS service name
   ECS_CLUSTER: waycab-ecs-cluster                 # set this to your Amazon ECS cluster name
   ECS_TASK_DEFINITION: waycab-fargate-tdf # set this to the path to your Amazon ECS task definition
@@ -64,16 +63,15 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Build, tag, and push image to Amazon ECR
-      id: build-image
+    - name: Build, tag, and push docker image to Amazon ECR
       env:
         REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        REPOSITORY: waycab/hellopy
-        IMAGE_TAG: latest
+        REPOSITORY: my-ecr-repo
+        IMAGE_TAG: ${{ github.sha }}
       run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
+        docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+        echo "image=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
     - name: Fill in the new image ID in the Amazon ECS task definition
       id: task-def
