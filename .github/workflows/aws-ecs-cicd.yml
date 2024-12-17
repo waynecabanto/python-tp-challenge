@@ -31,14 +31,13 @@ on:
     branches: [ "main" ]
 
 env:
-  AWS_REGION: eu-west-1                   # set this to your preferred AWS region, e.g. us-west-1
-  ECS_SERVICE: waycab-fargate-service                 # set this to your Amazon ECS service name
-  ECS_CLUSTER: waycab-ecs-cluster                 # set this to your Amazon ECS cluster name
-  ECS_TASK_DEFINITION_ARN: arn:aws:ecs:eu-west-1:303981612052:task-definition/waycab-fargate-tdf:1 # set this to the path to your Amazon ECS task definition
-                                               # file, e.g. .aws/task-definition.json
-  CONTAINER_NAME: hellopy-container           # set this to the name of the container in the
-                                               # containerDefinitions section of your task definition
-
+  AWS_REGION: eu-west-1                  
+  ECS_SERVICE: waycab-fargate-service            
+  ECS_CLUSTER: waycab-ecs-cluster              
+  ECS_TASK_DEFINITION_ARN: arn:aws:ecs:eu-west-1:303981612052:task-definition/waycab-fargate-tdf:1
+  CONTAINER_NAME: hellopy-container          
+  TARGET_GROUP_ARN: arn:aws:elasticloadbalancing:eu-west-1:303981612052:targetgroup/waycab-tg/358fdcd873c1581c
+  APP_PORT: 8080
 permissions:
   contents: read
 
@@ -92,3 +91,73 @@ jobs:
         service: ${{ env.ECS_SERVICE }}
         cluster: ${{ env.ECS_CLUSTER }}
         wait-for-service-stability: true
+
+    - name: Get Existing Targets in Target Group
+      id: get-existing-targets
+      run: |
+        # Fetch current targets in the ALB target group
+        EXISTING_TARGETS=$(aws elbv2 describe-target-health \
+          --target-group-arn $TARGET_GROUP_ARN \
+          --query 'TargetHealthDescriptions[].Target.Id' \
+          --output text)
+
+        # Export the targets for use in the next step
+        echo "EXISTING_TARGETS=${EXISTING_TARGETS}" >> $GITHUB_ENV
+
+    - name: Deregister Existing Targets
+      if: env.EXISTING_TARGETS != ''
+      run: |
+        # Convert space-separated targets into JSON format for deregistration
+        TARGETS=""
+        for IP in $EXISTING_TARGETS; do
+          TARGETS+="Id=$IP,Port=$APP_PORT "
+        done
+
+        # Deregister existing targets
+        aws elbv2 deregister-targets \
+          --target-group-arn $TARGET_GROUP_ARN \
+          --targets $TARGETS
+
+    - name: Get ECS Task Private IPs
+      id: get-task-ips
+      run: |
+        # Get the task ARNs of the ECS service
+        TASK_ARNS=$(aws ecs list-tasks \
+            --cluster $ECS_CLUSTER \
+            --service-name $ECS_SERVICE \
+            --query 'taskArns' \
+            --output text)
+        
+        # Initialize an empty list of IPs
+        PRIVATE_IPS=()
+        
+        # Loop through each task to retrieve its private IP
+        for TASK_ARN in $TASK_ARNS; do
+            ENI_ID=$(aws ecs describe-tasks \
+            --cluster $ECS_CLUSTER \
+            --tasks $TASK_ARN \
+            --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' \
+            --output text)
+            
+            PRIVATE_IP=$(aws ec2 describe-network-interfaces \
+            --network-interface-ids $ENI_ID \
+            --query 'NetworkInterfaces[0].PrivateIpAddress' \
+            --output text)
+            
+            PRIVATE_IPS+=("$PRIVATE_IP")
+        done
+
+        # Export the private IPs as an environment variable for the next step
+        echo "PRIVATE_IPS=${PRIVATE_IPS[*]}" >> $GITHUB_ENV
+
+    - name: Register New Targets
+      run: |
+        IP_LIST=""
+        for IP in $PRIVATE_IPS; do
+            IP_LIST+="Id=$IP,Port=$APP_PORT "
+        done
+        
+        echo "Changing the ALB Target group targets:"
+        aws elbv2 register-targets \
+            --target-group-arn $TARGET_GROUP_ARN \
+            --targets $IP_LIST
