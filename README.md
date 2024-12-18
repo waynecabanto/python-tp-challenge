@@ -5,6 +5,13 @@ A dockerized python backend application using Flask.
 The application inside the container is served using Gunicorn. 
 Using the default Flask server is not recommended for production and should only be used for development.
 
+Repository rules:
+---
+- cannot push to main directly except for admins
+- required PR before merging to main
+- required to pass status checks first before able to merge
+- required at least 1 reviewer to code review and approve
+
 GH Actions workflow:
 ---
 #### testing:
