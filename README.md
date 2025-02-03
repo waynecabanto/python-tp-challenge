@@ -35,3 +35,4 @@ steps:
 - deregister existing targets in the target group of the ALB
 - get IPs and ports of the newly deployed ECS tasks
 - register tasks as new targets in the target group of the ALB
+- 
