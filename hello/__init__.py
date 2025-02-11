@@ -12,6 +12,6 @@ def create_app():
 
     @app.route("/")
     def hello():
-        return "Hello, World! Test workflow cicd"
+        return "Hello, World! Test workflow cicd feb 11 2025"
 
     return app
